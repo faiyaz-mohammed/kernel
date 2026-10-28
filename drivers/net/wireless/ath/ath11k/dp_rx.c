@@ -2516,7 +2516,7 @@ static bool ath11k_dp_rx_check_nwifi_hdr_len_valid(struct ath11k_base *ab,
 	hdr = (struct ieee80211_hdr *)msdu->data;
 	hdr_len = ieee80211_hdrlen(hdr->frame_control);
 
-	if ((likely(hdr_len <= DP_MAX_NWIFI_HDR_LEN)))
+	if (likely(hdr_len <= DP_MAX_NWIFI_HDR_LEN))
 		return true;
 
 	ab->soc_stats.invalid_rbm++;
@@ -4095,15 +4095,6 @@ static bool ath11k_dp_rx_h_tkip_mic_err(struct ath11k *ar, struct sk_buff *msdu,
 
 	l3pad_bytes = ath11k_dp_rx_h_msdu_end_l3pad(ar->ab, desc);
 	msdu_len = ath11k_dp_rx_h_msdu_start_msdu_len(ar->ab, desc);
-
-	if (unlikely(hal_rx_desc_sz + l3pad_bytes + msdu_len > DP_RX_BUFFER_SIZE)) {
-		ath11k_dbg(ab, ATH11K_DBG_DATA,
-			   "invalid msdu len in tkip mic err %u\n", msdu_len);
-		ath11k_dbg_dump(ab, ATH11K_DBG_DATA, NULL, "", desc,
-				sizeof(*desc));
-		return true;
-	}
-
 	skb_put(msdu, hal_rx_desc_sz + l3pad_bytes + msdu_len);
 	skb_pull(msdu, hal_rx_desc_sz + l3pad_bytes);
 

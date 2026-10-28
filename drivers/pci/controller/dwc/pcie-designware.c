@@ -744,6 +744,7 @@ const char *dw_pcie_ltssm_status_string(enum dw_pcie_ltssm ltssm)
 	return str + strlen("DW_PCIE_LTSSM_");
 }
 
+
 /**
  * dw_pcie_wait_for_link - Wait for the PCIe link to be up
  * @pci: DWC instance
