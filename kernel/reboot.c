@@ -10,6 +10,7 @@
 #include <linux/array_size.h>
 #include <linux/atomic.h>
 #include <linux/build_bug.h>
+#include <linux/console.h>
 #include <linux/ctype.h>
 #include <linux/export.h>
 #include <linux/kexec.h>

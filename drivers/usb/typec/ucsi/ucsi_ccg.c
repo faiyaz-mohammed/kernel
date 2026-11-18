@@ -1652,14 +1652,28 @@ static int ucsi_ccg_init(struct ucsi_ccg *uc)
 	return -ETIMEDOUT;
 }
 
-static void ucsi_ccg_update_get_current_cam_cmd(struct ucsi_ccg *uc, u8 *data)
+static int ucsi_ccg_update_get_current_cam_cmd(struct ucsi_ccg *uc, u8 *data)
 {
 	u8 cam, new_cam;
 
 	cam = data[0];
+	if (cam >= UCSI_MAX_ALTMODES) {
+		dev_err(uc->dev, "PPM returned invalid alternate mode index %u\n",
+			cam);
+		return -EPROTO;
+	}
+
 	new_cam = uc->orig[cam].linked_idx;
+	if (new_cam >= UCSI_MAX_ALTMODES) {
+		dev_err(uc->dev, "invalid linked alternate mode index %u for %u\n",
+			new_cam, cam);
+		return -EPROTO;
+	}
+
 	uc->updated[new_cam].active_idx = cam;
 	data[0] = new_cam;
+
+	return 0;
 }
 
 static bool ucsi_ccg_update_altmodes(struct ucsi *ucsi,
@@ -1902,49 +1916,47 @@ static int ucsi_ccg_sync_control(struct ucsi *ucsi, u64 command, u32 *cci,
         ret = ucsi_sync_control_common(ucsi, command, cci, data, size);
 
 	switch (UCSI_COMMAND(command)) {
-        case UCSI_GET_CURRENT_CAM:
-                if (uc->has_multiple_dp)
-                        ucsi_ccg_update_get_current_cam_cmd(uc, (u8 *)data);
-                break;
-        case UCSI_GET_ALTERNATE_MODES:
-                if (UCSI_ALTMODE_RECIPIENT(command) == UCSI_RECIPIENT_SOP) {
-                        struct ucsi_altmode *alt = data;
+	case UCSI_GET_CURRENT_CAM:
+		if (!ret && uc->has_multiple_dp &&
+		    (*cci & UCSI_CCI_COMMAND_COMPLETE) &&
+		    !(*cci & UCSI_CCI_ERROR))
+			ret = ucsi_ccg_update_get_current_cam_cmd(uc, (u8 *)data);
+		break;
+	case UCSI_GET_ALTERNATE_MODES:
+		if (UCSI_ALTMODE_RECIPIENT(command) == UCSI_RECIPIENT_SOP) {
+			struct ucsi_altmode *alt = data;
 
-                        if (alt[0].svid == USB_TYPEC_NVIDIA_VLINK_SID)
-                                ucsi_ccg_nvidia_altmode(uc, alt, command);
-                }
-                break;
-        case UCSI_GET_CAPABILITY:
-                if (uc->fw_build == CCG_FW_BUILD_NVIDIA_TEGRA) {
-                        struct ucsi_capability *cap = data;
+			if (alt[0].svid == USB_TYPEC_NVIDIA_VLINK_SID)
+				ucsi_ccg_nvidia_altmode(uc, alt, command);
+		}
+		break;
+	case UCSI_GET_CAPABILITY: {
+		struct ucsi_capability *cap = data;
 
-                        cap->features &= ~UCSI_CAP_ALT_MODE_DETAILS;
-                }
-                struct ucsi_capability *cap = data;
-                cap->features &= ~UCSI_CAP_ALT_MODE_DETAILS;
-                cap->features &= ~UCSI_CAP_PDO_DETAILS;
-                break;
-        default:
-                break;
-        }
+		if (uc->fw_build == CCG_FW_BUILD_NVIDIA_TEGRA)
+			cap->features &= ~UCSI_CAP_ALT_MODE_DETAILS;
+		cap->features &= ~UCSI_CAP_PDO_DETAILS;
+		break;
+	}
+	default:
+		break;
+	}
 
 err_put:
-        pm_runtime_put_sync(uc->dev);
-        mutex_unlock(&uc->lock);
+	pm_runtime_put_sync(uc->dev);
+	mutex_unlock(&uc->lock);
 
-        return ret;
+	return ret;
 }
 
-
-
 static const struct ucsi_operations ucsi_ccg_ops = {
-        .read_version = ucsi_ccg_read_version,
-        .read_cci = ucsi_ccg_read_cci,
-        .poll_cci = ucsi_ccg_read_cci,
-        .read_message_in = ucsi_ccg_read_message_in,
-        .sync_control = ucsi_ccg_sync_control,
-        .async_control = ucsi_ccg_async_control,
-        .update_altmodes = ucsi_ccg_update_altmodes,
+	.read_version = ucsi_ccg_read_version,
+	.read_cci = ucsi_ccg_read_cci,
+	.poll_cci = ucsi_ccg_read_cci,
+	.read_message_in = ucsi_ccg_read_message_in,
+	.sync_control = ucsi_ccg_sync_control,
+	.async_control = ucsi_ccg_async_control,
+	.update_altmodes = ucsi_ccg_update_altmodes,
 };
 
 static irqreturn_t ccg_irq_handler(int irq, void *data)
